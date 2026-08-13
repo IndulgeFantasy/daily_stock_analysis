@@ -1214,6 +1214,19 @@ class DataFetcherManager:
         else:
             logger.debug("[数据源初始化] 跳过未配置的 AlphaVantageFetcher")
 
+        # Patchright 筹码兜底数据源（依赖本地 run-patchright-server.bat 服务）
+        if getattr(config, "patchright_enabled", False):
+            from .patchright_chip_fetcher import PatchrightChipFetcher
+
+            optional_fetchers.append(
+                PatchrightChipFetcher(
+                    base_url=(
+                        getattr(config, "patchright_base_url", "") or "http://127.0.0.1:8931"
+                    ),
+                )
+            )
+            logger.debug("[数据源初始化] 已启用 PatchrightChipFetcher（筹码分布兜底）")
+
         # 初始化数据源列表
         self._ensure_concurrency_guards()
         with self._fetchers_lock:

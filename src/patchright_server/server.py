@@ -86,6 +86,11 @@ class ContentRequest(BaseModel):
     timeout: float = 5.0
 
 
+class ChipRequest(BaseModel):
+    code: str
+    fqt: str = "1"
+
+
 def _search_result_to_dict(result: SearchResult) -> Dict[str, Any]:
     return {
         "title": result.title,
@@ -288,6 +293,46 @@ async def search(req: SearchRequest) -> Dict[str, Any]:
             search_time=elapsed,
         )
     )
+
+
+@app.post("/chip")
+async def chip(req: ChipRequest) -> Dict[str, Any]:
+    """抓取并计算 A 股筹码分布（东财口径，与行情页 #fullScreenChart 显示一致）。
+
+    请求: {"code": "600519", "fqt": "1"}
+    成功: {"code", "date", "profit_ratio", "avg_cost", "cost_90_low/high",
+           "concentration_90", "cost_70_low/high", "concentration_70", "source"}
+    失败: {"error": "..."}（浏览器未就绪/非 A 股/接口异常）
+    """
+    code = (req.code or "").strip()
+    if not code:
+        return {"error": "empty_code"}
+    fqt = req.fqt if req.fqt in ("0", "1") else "1"
+    if _browser is None:
+        return {"error": "browser_not_ready"}
+    semaphore = _get_page_semaphore()
+    async with semaphore:
+        try:
+            from . import cyq
+
+            if not cyq.supports_market(code):
+                return {"error": "unsupported_market"}
+            # 首次调用经 cyq.get_chip_distribution -> browser.new_page() 懒连接 Chrome CDP
+            payload = await cyq.get_chip_distribution(_browser, code, fqt=fqt)
+        except Exception as exc:
+            logger.warning("[chip] %s 获取筹码分布失败: %s", code, exc)
+            return {"error": str(exc)}
+    if payload is None:
+        return {"error": "no_data"}
+    logger.info(
+        "[chip] %s 日期=%s: 获利比例=%.1f%%, 平均成本=%s, 90集中度=%.2f%%",
+        code,
+        payload.get("date", ""),
+        (payload.get("profit_ratio") or 0.0) * 100,
+        payload.get("avg_cost"),
+        (payload.get("concentration_90") or 0.0) * 100,
+    )
+    return payload
 
 
 @app.post("/content")

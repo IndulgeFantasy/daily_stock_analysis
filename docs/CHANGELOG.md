@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [新功能] 新增 Patchright 独立搜索服务（本地浏览器引擎，抓取百度/夸克/360，无 API key）：浏览器生命周期与主进程完全解耦，服务不可达自动 failover；支持前端开关（PATCHRIGHT_ENABLED）与服务地址配置（PATCHRIGHT_BASE_URL），预留 /content 正文抓取接口。
 - [改进] Patchright 搜索服务支持页面复用池与全局并发信号量（PATCHRIGHT_MAX_CONCURRENT_PAGES，默认 3）：每引擎常驻标签页复用、崩溃自动重建，限制同时打开的浏览器页面数，降低本地浏览器负载与搜索风控暴露面。
 - [改进] 百度搜索支持 AI 总结抓取：等待结果渲染稳定后再解析（避免流式输出抓到半截），识别 cosc-card 容器提取百度 AI 智能聚合分析（source=baidu_ai_summary），排除"相关搜索"/普通卡片误判。
+- [改进] 夸克搜索切换至 ai.quark.cn（夸克 AI 搜索，国内直连）：资讯卡片结构化提取（标题/URL/摘要/日期，日期从卡片文本正则提取），支持 AI 总结（.sgs-container）抓取并忽略模板占位文本，等待选择器适配新页面结构。
+- [新功能] 筹码分布新增 Patchright 兜底数据源（东财行情页同源口径：前复权 + 最近 120 个交易日 CYQ 算法，数值与页面显示一致）：复用本地 patchright 服务（PATCHRIGHT_ENABLED + PATCHRIGHT_BASE_URL 控制），服务端新增 /chip 接口（含日 K 缓存与并发限流），主进程经 PatchrightChipFetcher 接入现有熔断/降级链路，Akshare/Tushare 不可用时自动兜底。
 
 ## [3.30.0] - 2026-08-09
 
