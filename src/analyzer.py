@@ -3544,7 +3544,7 @@ class GeminiAnalyzer:
             # 设置生成配置
             generation_config = {
                 "temperature": config.llm_temperature,
-                "max_output_tokens": 8192,
+                "max_output_tokens": 16384,
             }
 
             logger.info(f"[LLM调用] 开始调用 {model_name}...")
