@@ -2220,6 +2220,135 @@ class SearXNGSearchProvider(BaseSearchProvider):
         )
 
 
+class PatchrightSearchProvider(BaseSearchProvider):
+    """
+    Patchright 独立搜索服务（本地浏览器引擎，HTTP 客户端）。
+
+    主进程不持有浏览器；通过 HTTP 调用独立的 patchright 服务进程
+    （run-patchright-server.bat），浏览器生命周期与主进程完全解耦。
+    服务不可达时返回失败，由 SearchService 自动 failover 到下一引擎。
+    """
+
+    SEARCH_PATH = "/search"
+    HEALTH_PATH = "/healthz"
+    TIMEOUT_SECONDS = 15
+
+    def __init__(self, base_url: str = "http://127.0.0.1:8931"):
+        normalized = (base_url or "").strip().rstrip("/")
+        super().__init__([], "Patchright")
+        self._base_url = normalized
+
+    @property
+    def is_available(self) -> bool:
+        return bool(self._base_url)
+
+    def search(self, query: str, max_results: int = 5, days: int = 7) -> SearchResponse:
+        """Execute a search directly (no API key flow; HTTP call to the service)."""
+        start_time = time.time()
+        response = self._do_search(query, "", max_results, days=days)
+        response.search_time = time.time() - start_time
+        if response.success:
+            logger.info(
+                "[%s] 搜索 '%s' 成功，返回 %s 条结果，耗时 %.2fs",
+                self.name,
+                query,
+                len(response.results),
+                response.search_time,
+            )
+        else:
+            logger.warning("[%s] 搜索失败: %s", self.name, response.error_message)
+        return response
+
+    def _do_search(
+        self,
+        query: str,
+        api_key: str,
+        max_results: int,
+        days: int = 7,
+    ) -> SearchResponse:
+        """HTTP 调用 Patchright 服务执行搜索并解析标准 JSON 响应。"""
+        import requests
+
+        try:
+            response = requests.post(
+                self._base_url + self.SEARCH_PATH,
+                json={
+                    "query": query,
+                    "max_results": max_results,
+                    "days": days,
+                },
+                timeout=self.TIMEOUT_SECONDS,
+            )
+            if response.status_code != 200:
+                return SearchResponse(
+                    query=query,
+                    results=[],
+                    provider=self.name,
+                    success=False,
+                    error_message=f"HTTP {response.status_code}",
+                )
+            data = response.json()
+            results = []
+            for item in data.get("results", []) or []:
+                if not isinstance(item, dict):
+                    continue
+                url_val = item.get("url")
+                if not url_val:
+                    continue
+                results.append(
+                    SearchResult(
+                        title=item.get("title", ""),
+                        snippet=item.get("snippet", "") or "",
+                        url=url_val,
+                        source=item.get("source") or self._extract_domain(url_val),
+                        published_date=item.get("published_date"),
+                    )
+                )
+            return SearchResponse(
+                query=data.get("query") or query,
+                results=results,
+                provider=self.name,
+                success=bool(data.get("success", True)),
+                error_message=data.get("error_message"),
+            )
+        except requests.exceptions.Timeout:
+            return SearchResponse(
+                query=query,
+                results=[],
+                provider=self.name,
+                success=False,
+                error_message="Patchright 服务请求超时",
+            )
+        except requests.exceptions.RequestException as exc:
+            return SearchResponse(
+                query=query,
+                results=[],
+                provider=self.name,
+                success=False,
+                error_message=f"Patchright 服务不可达: {exc}",
+            )
+        except Exception as exc:
+            return SearchResponse(
+                query=query,
+                results=[],
+                provider=self.name,
+                success=False,
+                error_message=f"未知错误: {exc}",
+            )
+
+    @staticmethod
+    def _extract_domain(url: str) -> str:
+        """Extract domain from URL as source label."""
+        try:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            domain = parsed.netloc.replace("www.", "")
+            return domain or "未知来源"
+        except Exception:
+            return "未知来源"
+
+
 class SearchService:
     """
     搜索服务
@@ -2390,6 +2519,8 @@ class SearchService:
         minimax_keys: Optional[List[str]] = None,
         searxng_base_urls: Optional[List[str]] = None,
         searxng_public_instances_enabled: bool = True,
+        patchright_enabled: bool = False,
+        patchright_base_url: str = "http://127.0.0.1:8931",
         news_max_age_days: int = 3,
         news_strategy_profile: str = "short",
     ):
@@ -2405,6 +2536,8 @@ class SearchService:
             minimax_keys: MiniMax API Key 列表
             searxng_base_urls: SearXNG 实例地址列表（自建无配额兜底）
             searxng_public_instances_enabled: 未配置自建实例时，是否自动使用公共 SearXNG 实例
+            patchright_enabled: 是否启用 Patchright 独立搜索服务（本地浏览器引擎）
+            patchright_base_url: Patchright 搜索服务基础地址
             news_max_age_days: 新闻最大时效（天）
             news_strategy_profile: 新闻窗口策略档位（ultra_short/short/medium/long）
         """
@@ -2417,6 +2550,8 @@ class SearchService:
             "minimax_keys": list(minimax_keys or []),
             "searxng_base_urls": list(searxng_base_urls or []),
             "searxng_public_instances_enabled": bool(searxng_public_instances_enabled),
+            "patchright_enabled": bool(patchright_enabled),
+            "patchright_base_url": str(patchright_base_url or "http://127.0.0.1:8931"),
             "news_max_age_days": int(news_max_age_days),
             "news_strategy_profile": news_strategy_profile,
         }
@@ -2475,6 +2610,12 @@ class SearchService:
                 logger.info("已配置 SearXNG 搜索，共 %s 个自建实例", len(searxng_base_urls))
             else:
                 logger.info("已启用 SearXNG 公共实例自动发现模式")
+
+        # 6.1 Patchright（独立本地浏览器搜索服务，SearXNG 之后的兜底）
+        if patchright_enabled:
+            patchright_provider = PatchrightSearchProvider(patchright_base_url)
+            self._providers.append(patchright_provider)
+            logger.info("已配置 Patchright 搜索服务: %s", patchright_base_url)
 
         # 7. Anspire Search（实时智能搜索优化）
         if anspire_keys:
@@ -4890,6 +5031,12 @@ def get_search_service() -> SearchService:
                     minimax_keys=config.minimax_api_keys,
                     searxng_base_urls=config.searxng_base_urls,
                     searxng_public_instances_enabled=config.searxng_public_instances_enabled,
+                    patchright_enabled=getattr(config, "patchright_enabled", False),
+                    patchright_base_url=getattr(
+                        config,
+                        "patchright_base_url",
+                        "http://127.0.0.1:8931",
+                    ),
                     news_max_age_days=config.news_max_age_days,
                     news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
                 )

@@ -1114,6 +1114,37 @@ _FIELD_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "validation": {},
         "display_order": 53,
     },
+    "PATCHRIGHT_ENABLED": {
+        "title": "Patchright Search Service",
+        "description": "Enable the Patchright standalone search service (local browser engine). Requires the service running via run-patchright-server.bat.",
+        "category": "data_source",
+        "data_type": "boolean",
+        "ui_control": "switch",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "false",
+        "options": [],
+        "validation": {},
+        "display_order": 54,
+    },
+    "PATCHRIGHT_BASE_URL": {
+        "title": "Patchright Base URL",
+        "description": "Base URL of the Patchright standalone search service. Default: http://127.0.0.1:8931",
+        "category": "data_source",
+        "data_type": "string",
+        "ui_control": "text",
+        "is_sensitive": False,
+        "is_required": False,
+        "is_editable": True,
+        "default_value": "http://127.0.0.1:8931",
+        "options": [],
+        "validation": {
+            "url": True,
+            "allowed_schemes": ["http", "https"],
+        },
+        "display_order": 55,
+    },
     "ENABLE_REALTIME_QUOTE": {
         "title": "Enable Realtime Quote",
         "description": "Enable realtime market quotes. Disable to only use historical close prices.",
@@ -4665,6 +4696,23 @@ _FIELD_HELP_METADATA: Dict[str, Dict[str, Any]] = {
         "docs": _DOC_FULL_GUIDE_SEARCH,
         "warning_codes": ["public_instance_stability"],
     },
+    "PATCHRIGHT_ENABLED": {
+        "help_key": "settings.data_source.PATCHRIGHT_ENABLED",
+        "examples": [
+            "PATCHRIGHT_ENABLED=true",
+            "PATCHRIGHT_ENABLED=false",
+        ],
+        "docs": _DOC_FULL_GUIDE_SEARCH,
+        "warning_codes": ["patchright_service_required"],
+    },
+    "PATCHRIGHT_BASE_URL": {
+        "help_key": "settings.data_source.PATCHRIGHT_BASE_URL",
+        "examples": [
+            "PATCHRIGHT_BASE_URL=http://127.0.0.1:8931",
+        ],
+        "docs": _DOC_FULL_GUIDE_SEARCH,
+        "warning_codes": [],
+    },
     "BIAS_THRESHOLD": {
         "help_key": "settings.data_source.BIAS_THRESHOLD",
         "examples": [
@@ -5018,6 +5066,7 @@ def _infer_category(key: str) -> str:
             "BOCHA",
             "ANSPIRE",
             "SEARXNG",
+            "PATCHRIGHT",
             "NEWS_",
             "BIAS_",
         )

@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 <!-- 新条目格式：- [类型] 描述（类型取值：新功能/改进/修复/文档/测试/chore）-->
 <!-- 每条独立一行追加到本段末尾，无需分类标题，合并时冲突最小 -->
 - [改进] AIHubMix 注册与引流链接统一使用 inferera.com，改善中国大陆网络直连体验。
+- [新功能] 新增 Patchright 独立搜索服务（本地浏览器引擎，抓取百度/夸克/360，无 API key）：浏览器生命周期与主进程完全解耦，服务不可达自动 failover；支持前端开关（PATCHRIGHT_ENABLED）与服务地址配置（PATCHRIGHT_BASE_URL），预留 /content 正文抓取接口。
+- [改进] Patchright 搜索服务支持页面复用池与全局并发信号量（PATCHRIGHT_MAX_CONCURRENT_PAGES，默认 3）：每引擎常驻标签页复用、崩溃自动重建，限制同时打开的浏览器页面数，降低本地浏览器负载与搜索风控暴露面。
 
 ## [3.30.0] - 2026-08-09
 

@@ -105,6 +105,12 @@ def build_market_review_runtime(
                 "searxng_public_instances_enabled",
                 True,
             ),
+            patchright_enabled=getattr(config, "patchright_enabled", False),
+            patchright_base_url=getattr(
+                config,
+                "patchright_base_url",
+                "http://127.0.0.1:8931",
+            ),
             news_max_age_days=getattr(config, "news_max_age_days", 3),
             news_strategy_profile=getattr(config, "news_strategy_profile", "short"),
         )
