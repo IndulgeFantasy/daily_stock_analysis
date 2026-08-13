@@ -202,47 +202,90 @@ def _extract_baidu_ai_summary(soup) -> Optional[Dict]:
 
 
 # ---------------------------------------------------------------------------
-# 夸克
+# 夸克 AI 搜索（ai.quark.cn，国内直连，资讯卡片带日期）
 # ---------------------------------------------------------------------------
 
-QUARK_URL = "https://quark.sm.cn/s"
+QUARK_URL = "https://ai.quark.cn/s/x"
 QUARK_SOURCE = "quark.sm.cn"
 
 
 def build_quark_url(query: str) -> str:
-    from urllib.parse import urlencode
+    from urllib.parse import quote
 
-    return f"{QUARK_URL}?{urlencode({'q': query})}"
+    return (
+        f"{QUARK_URL}?from=kkframenew_resultsearch"
+        f"&by=submit&q={quote(query)}"
+    )
 
 
 def parse_quark(html: str, max_results: int = 10) -> List[Dict]:
-    """解析夸克搜索结果页（结构较散，采用通用 a+h3 提取）。"""
+    """解析夸克 AI 搜索结果页（ai.quark.cn）。
+
+    结构（参考 playwright_service 实现）：
+    - 资讯卡片：article 下 [class*="result-"] 内的 a[href^="http"]，
+      日期从卡片文本正则提取（YYYY-MM-DD / YYYY年MM月DD日）
+    - AI 总结：.sgs-container（流式生成，可能不存在；文本含模板占位时忽略）
+    """
     soup = BeautifulSoup(html, "html.parser")
     results: List[Dict] = []
-    for anchor in soup.find_all("a", href=True):
+
+    ai_summary = _extract_quark_ai_summary(soup)
+    if ai_summary is not None:
+        results.append(ai_summary)
+
+    seen_titles: set = set()
+    cards = soup.select('article [class*="result-"]')
+    for card in cards:
         if len(results) >= max_results:
             break
-        href = anchor["href"]
-        if not href.startswith("http") or "sm.cn" in href or "quark" in href:
+        anchor = card.find("a", href=True)
+        if anchor is None:
+            continue
+        href = anchor.get("href") or ""
+        if not href.startswith("http"):
             continue
         title = anchor.get_text(" ", strip=True)
-        if not title or len(title) < 4:
+        if not title or len(title) < 5 or title in seen_titles:
             continue
-        # 摘要：取链接容器的邻近文本
-        container = anchor.find_parent(["div", "section", "li"])
-        snippet = ""
-        if container is not None:
-            snippet = _clean_text(container.get_text(" ", strip=True))
+        seen_titles.add(title)
+        card_text = card.get_text(" ", strip=True)
+        # 清理 quark 注入的脚本噪声
+        card_text = re.sub(r"window\._q_wl_sc_\d+ = Date\.now\(\)", "", card_text)
+        snippet = _clean_text(card_text)
         results.append(
             {
                 "title": title[:200],
                 "snippet": snippet,
                 "url": _norm_url(href),
                 "source": QUARK_SOURCE,
-                "published_date": _extract_date(f"{title} {snippet}"),
+                "published_date": _extract_date(f"{title} {card_text}"),
             }
         )
     return results
+
+
+_QUARK_TEMPLATE_MARK = "以上内容由AI生成"
+
+
+def _extract_quark_ai_summary(soup) -> Optional[Dict]:
+    """提取夸克 AI 总结（.sgs-container）。
+
+    流式生成：模板占位文本（≤100 字符或含"以上内容由AI生成"）视为未生成，
+    不提取；仅在存在真实内容（>100 字符且无模板标记）时返回。
+    """
+    el = soup.select_one(".sgs-container")
+    if el is None:
+        return None
+    text = el.get_text("\n", strip=True)
+    if len(text) <= 100 or _QUARK_TEMPLATE_MARK in text[:200]:
+        return None
+    return {
+        "title": "[AI总结] 夸克智能聚合分析",
+        "snippet": _clean_text(text, limit=1500),
+        "url": "",
+        "source": "quark_ai_summary",
+        "published_date": None,
+    }
 
 
 # ---------------------------------------------------------------------------

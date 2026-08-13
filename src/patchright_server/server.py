@@ -180,11 +180,13 @@ async def _wait_results_stable(page, engine_name: str, timeout_ms: int) -> None:
     增长数秒；通过采样 div.result / cosc-card 数量判断渲染完成，
     避免抓到半截 AI 总结。超时按稳定处理（走现有降级/正常路径）。
     """
-    selector = (
-        "div.result, div.c-container, [class*='cosc-card']"
-        if engine_name == "baidu"
-        else "div.result, li.res-list, li.result, section"
-    )
+    if engine_name == "baidu":
+        selector = "div.result, div.c-container, [class*='cosc-card']"
+    elif engine_name == "quark":
+        # ai.quark.cn：资讯卡片在 article [class*="result-"] 下，AI 总结流式生成
+        selector = 'article [class*="result-"], .sgs-container'
+    else:
+        selector = "div.result, li.res-list, li.result, section"
     stable_rounds = 0
     prev_count = -1
     deadline = time.monotonic() + min(5.0, max(1.0, timeout_ms / 1000))

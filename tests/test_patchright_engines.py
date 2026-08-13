@@ -41,13 +41,58 @@ BAIDU_BLOCKED_HTML = """
 
 QUARK_HTML = """
 <html><body>
-<section>
-  <a href="https://news.qq.com/rain/a/20260810A00AX00"><h3>夸克抓到的腾讯新闻标题</h3></a>
-  <div>2026-08-10 腾讯新闻内容摘要</div>
-</section>
-<section>
-  <a href="https://quark.sm.cn/internal"><h3>内部链接应被跳过</h3></a>
-</section>
+<div class="results">
+<article>
+  <div class="result-EzdYH">
+    <a href="https://news.qq.com/rain/a/20260810A00AX00"><h3>夸克抓到的腾讯新闻标题</h3></a>
+    <span>腾讯网 2026-08-10 腾讯新闻内容摘要 window._q_wl_sc_1_2 = Date.now();</span>
+  </div>
+</article>
+<article>
+  <div class="result-EzdYH">
+    <a href="javascript:void(0)"><h3>无效链接应被跳过</h3></a>
+  </div>
+</article>
+</div>
+</body></html>
+"""
+
+QUARK_HTML_AI = """
+<html><body>
+<div class="results">
+<article>
+  <div class="result-EzdYH">
+    <a href="https://page.sm.cn/blm/video-page-710/video?id=1"><h3>伊利股份！高盛最新评级：买入</h3></a>
+    <span>高盛发布研报称，伊利股份600887因优然牧业扭亏为盈而面临业绩分化 2026-07-29</span>
+  </div>
+</article>
+<article>
+  <div class="result-EzdYH">
+    <a href="https://www.sohu.com/a/20260512.html"><h3>业绩双增，伊利11万股东沸腾了</h3></a>
+    <span>伊利股份在2025年和2026年第一季度实现了营收和净利润的双增 2026-05-12</span>
+  </div>
+</article>
+<article>
+  <div class="result-EzdYH">
+    <a href="http://emweb.eastmoney.com/PC_HSF10/NewsBulletin/index?code=SH600887"><h3>伊利股份(600887.SH)资讯公告</h3></a>
+    <span>内蒙古伊利实业集团股份有限公司关于境外全资子公司 2026-06-26</span>
+  </div>
+</article>
+</div>
+<div class="sgs-container">
+  以上内容由AI生成以上内容由AI生成内容由AI生成 仅供参考收藏导出分享生成PPT
+</div>
+</body></html>
+"""
+
+QUARK_HTML_AI_REAL = """
+<html><body>
+<div class="sgs-container">
+基于最新市场信息，伊利股份（600887）近期获得高盛买入评级，目标价上调。
+高盛指出优然牧业扭亏为盈与澳优乳业亏损形成业绩分化。公司2025年营收与
+净利润双增，多元化产品布局和渠道改革成效显著。机构普遍看好其成本控制
+与周期底部盈利能力，建议关注乳制品行业复苏节奏与原材料价格走势。
+</div>
 </body></html>
 """
 
@@ -180,15 +225,42 @@ class TestBaiduParser(unittest.TestCase):
 class TestQuarkParser(unittest.TestCase):
     def test_build_url(self) -> None:
         url = build_quark_url("第一创业 新闻")
-        self.assertIn("quark.sm.cn/s", url)
+        self.assertIn("ai.quark.cn/s/x", url)
         self.assertIn("q=", url)
+        self.assertIn("by=submit", url)
 
-    def test_parse_skips_internal_links(self) -> None:
+    def test_parse_skips_invalid_links(self) -> None:
         results = parse_quark(QUARK_HTML, max_results=10)
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["title"], "夸克抓到的腾讯新闻标题")
         self.assertEqual(results[0]["url"], "https://news.qq.com/rain/a/20260810A00AX00")
         self.assertEqual(results[0]["published_date"], "2026-08-10")
+
+    def test_parse_ai_quark_cards_with_dates(self) -> None:
+        """ai.quark.cn 卡片：日期从卡片文本提取，内部链接跳过，脚本噪声清理。"""
+        results = parse_quark(QUARK_HTML_AI, max_results=10)
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[0]["title"], "伊利股份！高盛最新评级：买入")
+        self.assertEqual(results[0]["published_date"], "2026-07-29")
+        self.assertEqual(results[1]["published_date"], "2026-05-12")
+        self.assertEqual(results[2]["published_date"], "2026-06-26")
+        # 脚本噪声已清理
+        self.assertNotIn("_q_wl_sc", results[0]["snippet"])
+
+    def test_parse_ignores_ai_template_placeholder(self) -> None:
+        """AI 总结为模板占位（"以上内容由AI生成"）时不提取。"""
+        results = parse_quark(QUARK_HTML_AI, max_results=10)
+        ai = [r for r in results if r["source"] == "quark_ai_summary"]
+        self.assertEqual(ai, [])
+
+    def test_parse_extracts_real_ai_summary(self) -> None:
+        """AI 总结有真实内容（>100 字符且无模板标记）时提取。"""
+        results = parse_quark(QUARK_HTML_AI_REAL, max_results=10)
+        ai = [r for r in results if r["source"] == "quark_ai_summary"]
+        self.assertEqual(len(ai), 1)
+        self.assertEqual(ai[0]["title"], "[AI总结] 夸克智能聚合分析")
+        self.assertIn("伊利股份", ai[0]["snippet"])
+        self.assertIsNone(ai[0]["published_date"])
 
 
 class Test360Parser(unittest.TestCase):
