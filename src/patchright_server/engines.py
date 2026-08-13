@@ -121,9 +121,18 @@ def build_baidu_url(query: str) -> str:
 
 
 def parse_baidu(html: str, max_results: int = 10) -> List[Dict]:
-    """解析百度搜索结果页（class="result c-container"）。"""
+    """解析百度搜索结果页（class="result c-container"）。
+
+    额外提取百度 AI 总结（cosc-card dqa-layout 容器）：作为独立结果，
+    source=baidu_ai_summary，published_date 置空（研报聚合无单一发布时间）。
+    """
     soup = BeautifulSoup(html, "html.parser")
     results: List[Dict] = []
+
+    ai_summary = _extract_baidu_ai_summary(soup)
+    if ai_summary is not None:
+        results.append(ai_summary)
+
     containers = soup.select("div.result, div.c-container")
     for container in containers:
         if len(results) >= max_results:
@@ -159,6 +168,37 @@ def parse_baidu(html: str, max_results: int = 10) -> List[Dict]:
             }
         )
     return results
+
+
+_AI_SUMMARY_HEADINGS = ("基于当前", "以下是关于", "根据最新", "综合来看", "综上所述")
+
+
+def _extract_baidu_ai_summary(soup) -> Optional[Dict]:
+    """提取百度 AI 总结正文（cosc-card 中的研报/深度分析聚合）。
+
+    选择策略：在 cosc-card 容器内找文本最长的可见块，且文本以典型
+    AI 总结开头（避免把"相关搜索"、富途牛牛等普通卡片误判为 AI 总结）。
+    """
+    cards = soup.select('[class*="cosc-card"]')
+    best_text = ""
+    for card in cards:
+        text = card.get_text("\n", strip=True)
+        if not text or text.startswith("相关搜索"):
+            continue
+        if len(text) <= len(best_text):
+            continue
+        head = text[:20]
+        if any(head.startswith(prefix) for prefix in _AI_SUMMARY_HEADINGS):
+            best_text = text
+    if not best_text:
+        return None
+    return {
+        "title": "[AI总结] 百度智能聚合分析",
+        "snippet": _clean_text(best_text, limit=1500),
+        "url": "",
+        "source": "baidu_ai_summary",
+        "published_date": None,
+    }
 
 
 # ---------------------------------------------------------------------------

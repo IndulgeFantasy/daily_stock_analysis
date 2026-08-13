@@ -141,6 +141,7 @@ async def _search_one_engine(
     - 全局信号量限制同时执行的页面操作数（MAX_CONCURRENT_PAGES）
     - 每引擎互斥锁防止常驻页面被并发导航
     - 页面复用池：页面常驻不关闭，崩溃/导航失败时移除并下次重建
+    - 抓取前等待结果稳定（百度 AI 总结为流式输出，需等其渲染完成）
     """
     engine = ENGINES[engine_name]
     if _browser is None:
@@ -156,6 +157,7 @@ async def _search_one_engine(
                     timeout=timeout_ms,
                     wait_until="domcontentloaded",
                 )
+                await _wait_results_stable(page, engine_name, timeout_ms)
                 html = await page.content()
                 if is_blocked(html):
                     logger.warning("[%s] 结果页疑似风控，引擎降级为空", engine_name)
@@ -169,6 +171,36 @@ async def _search_one_engine(
                 # 页面可能已崩溃/导航失败，移出复用池以便下次重建
                 await _browser.drop_engine_page(engine_name)
                 return {"engine": engine_name, "results": [], "error": str(exc)}
+
+
+async def _wait_results_stable(page, engine_name: str, timeout_ms: int) -> None:
+    """等待搜索结果渲染稳定：结果容器数量连续两次采样不变。
+
+    百度 AI 总结为流式输出（一字一字渲染），domcontentloaded 后仍可能
+    增长数秒；通过采样 div.result / cosc-card 数量判断渲染完成，
+    避免抓到半截 AI 总结。超时按稳定处理（走现有降级/正常路径）。
+    """
+    selector = (
+        "div.result, div.c-container, [class*='cosc-card']"
+        if engine_name == "baidu"
+        else "div.result, li.res-list, li.result, section"
+    )
+    stable_rounds = 0
+    prev_count = -1
+    deadline = time.monotonic() + min(5.0, max(1.0, timeout_ms / 1000))
+    while time.monotonic() < deadline:
+        try:
+            count = await page.locator(selector).count()
+        except Exception:
+            return
+        if count == prev_count:
+            stable_rounds += 1
+            if stable_rounds >= 2:
+                return
+        else:
+            stable_rounds = 0
+            prev_count = count
+        await page.wait_for_timeout(400)
 
 
 @app.get("/healthz")

@@ -3,6 +3,7 @@
 
 import asyncio
 import sys
+import time
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -271,6 +272,10 @@ class TestEngineConcurrency(unittest.IsolatedAsyncioTestCase):
         page.goto = AsyncMock()
         page.content = AsyncMock(return_value="<html>ok</html>")
         page.is_closed.return_value = False
+        page.wait_for_timeout = AsyncMock()
+        locator = MagicMock()
+        locator.count = AsyncMock(return_value=5)
+        page.locator = MagicMock(return_value=locator)
         browser.get_engine_page = AsyncMock(return_value=page)
         browser.drop_engine_page = AsyncMock()
         patchright_server._browser = browser
@@ -281,6 +286,40 @@ class TestEngineConcurrency(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outcome["error"], None)
         browser.get_engine_page.assert_awaited_once_with("baidu")
         browser.drop_engine_page.assert_not_awaited()
+
+    async def test_wait_results_stable_returns_when_count_stabilizes(self) -> None:
+        """结果数量连续两次采样不变即返回（AI 总结渲染完成判定）。"""
+        page = MagicMock()
+        locator = MagicMock()
+        counts = [3, 5, 5, 5]
+        locator.count = AsyncMock(side_effect=counts)
+        page.locator = MagicMock(return_value=locator)
+        page.wait_for_timeout = AsyncMock()
+        await patchright_server._wait_results_stable(page, "baidu", 15000)
+        # 3 -> 5 -> 5（第1次稳定）-> 5（第2次稳定即返回）
+        self.assertEqual(locator.count.await_count, 4)
+        page.wait_for_timeout.assert_awaited()
+
+    async def test_wait_results_stable_returns_on_timeout(self) -> None:
+        """数量持续变化时按超时（5s 上限）返回，不阻塞搜索。"""
+        page = MagicMock()
+        locator = MagicMock()
+        counter = {"n": 0}
+
+        async def _ever_changing() -> int:
+            counter["n"] += 1
+            return counter["n"]
+
+        locator.count = AsyncMock(side_effect=_ever_changing)
+        page.locator = MagicMock(return_value=locator)
+        page.wait_for_timeout = AsyncMock()
+        started = time.monotonic()
+        await patchright_server._wait_results_stable(page, "baidu", 15000)
+        elapsed = time.monotonic() - started
+        # 每轮采样 400ms，5s 上限约 12-13 次
+        self.assertGreaterEqual(elapsed, 4.5)
+        self.assertLessEqual(elapsed, 6.5)
+        self.assertGreater(counter["n"], 8)
 
     async def test_search_one_engine_blocked_drops_page(self) -> None:
         """风控命中时页面移除出池（下次重建），避免污染后续请求。"""

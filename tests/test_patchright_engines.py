@@ -111,6 +111,71 @@ class TestBaiduParser(unittest.TestCase):
         html = '<div class="result"><h3><a href="javascript:void(0)">x</a></h3></div>'
         self.assertEqual(parse_baidu(html), [])
 
+    def test_parse_extracts_ai_summary(self) -> None:
+        html = """
+<html><body>
+<div class="cosc-card dqa-layout_2uZOY baikan-pc-experiment_5wdpa">
+  <div class="cosc-card-content-border">
+    <div class="cosc-card-content">
+      基于当前市场公开资料与主流券商研报，牧原股份（002714）作为全球生猪养殖龙头。
+      综合评级：近三个月33位分析师中81.82%给予强力推荐。平均目标价55.96元。
+    </div>
+  </div>
+</div>
+<div class="result c-container">
+  <h3 class="t"><a href="https://finance.eastmoney.com/a/1.html">牧原股份 研报</a></h3>
+  <div class="c-abstract">2026-08-10 研报摘要</div>
+</div>
+</body></html>
+"""
+        results = parse_baidu(html, max_results=10)
+        # AI 总结作为第一条
+        self.assertEqual(len(results), 2)
+        first = results[0]
+        self.assertEqual(first["source"], "baidu_ai_summary")
+        self.assertEqual(first["title"], "[AI总结] 百度智能聚合分析")
+        self.assertIn("牧原股份", first["snippet"])
+        self.assertIsNone(first["published_date"])
+        # 普通结果紧随其后
+        self.assertEqual(results[1]["source"], "baidu.com")
+
+    def test_parse_ignores_related_search_cards(self) -> None:
+        """cosc-card 中的"相关搜索"/富途牛牛等普通卡片不应误判为 AI 总结。"""
+        html = """
+<html><body>
+<div class="cosc-card">
+  <div class="cosc-card-content">相关搜索\n牧原股份一季度业绩公告\n牧原股份深度分析</div>
+</div>
+<div class="cosc-card aladdin-struct_r13eS">
+  <div class="cosc-card-content">牧原股份 (002714)股票预测和分析师评级 - 富途牛牛</div>
+</div>
+<div class="result c-container">
+  <h3 class="t"><a href="https://finance.eastmoney.com/a/2.html">牧原股份 新闻</a></h3>
+  <div class="c-abstract">2026-08-11 新闻摘要</div>
+</div>
+</body></html>
+"""
+        results = parse_baidu(html, max_results=10)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["source"], "baidu.com")
+        self.assertNotEqual(results[0]["source"], "baidu_ai_summary")
+
+    def test_ai_summary_counts_toward_max_results(self) -> None:
+        html = """
+<html><body>
+<div class="cosc-card dqa-layout">
+  <div class="cosc-card-content">基于当前市场公开资料，这是 AI 总结正文。</div>
+</div>
+<div class="result c-container">
+  <h3 class="t"><a href="https://finance.eastmoney.com/a/3.html">牧原股份</a></h3>
+  <div class="c-abstract">2026-08-11 摘要</div>
+</div>
+</body></html>
+"""
+        results = parse_baidu(html, max_results=1)
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["source"], "baidu_ai_summary")
+
 
 class TestQuarkParser(unittest.TestCase):
     def test_build_url(self) -> None:
