@@ -28,7 +28,9 @@ from data_provider.realtime_types import ChipDistribution
 logger = logging.getLogger(__name__)
 
 _DEFAULT_BASE_URL = "http://127.0.0.1:8931"
-_DEFAULT_TIMEOUT_SECONDS = 8.0
+# 服务端 /chip 冷处理实测 4~18s（导航 K 线接口 + 页面加载，与搜索共享浏览器），
+# 超时阈值需覆盖最慢场景，避免分析主流程侧误判失败
+_DEFAULT_TIMEOUT_SECONDS = 30.0
 
 
 class PatchrightChipFetcher(BaseFetcher):

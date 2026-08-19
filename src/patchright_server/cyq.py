@@ -8,7 +8,8 @@
 
 注意：请求 kline 接口时不要携带 smplmt 参数（会导致东财返回全历史等间隔
 采样数据，筹码窗口严重失真）；页面筹码图为 canvas 渲染，DOM 无文本可读，
-故采用「浏览器导航接口读取 JSONP 文本 + 本地同算法计算」。
+故采用「浏览器直接导航接口读取 JSONP 文本 + 本地同算法计算」（已实测无需
+先访问行情页建立 referer，顶层导航即可拿到数据）。
 """
 
 import json
@@ -161,23 +162,17 @@ def compute_cyq_metrics(records: List[Dict[str, float]], range_bars: int = _DEFA
 
 
 async def _fetch_kline_text(page: Any, code: str, fqt: str) -> str:
-    """先打开行情页（建立东财 referer 上下文），再直接导航到日 K JSONP 接口读取响应文本。
+    """直接导航到日 K JSONP 接口读取响应文本（实测无需先访问行情页，省一次页面加载）。
 
-    注：在页面内注入 script 标签做 JSONP 回调在行情页环境下不可靠
-    （实测 onload 触发但回调不执行）；直接导航读取文档文本最稳定。
+    注：在页面内注入 script 标签做 JSONP 回调不可靠（实测 onload 触发但回调不执行）；
+    直接导航读取文档文本最稳定。导航后轮询 innerText 就绪，避免固定 sleep 拖慢冷处理。
     """
     import asyncio
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    exchange, market = _eastmoney_market(code)
+    market = _eastmoney_market(code)[1]
     today = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d")
-    await page.goto(
-        f"https://quote.eastmoney.com/{exchange}{code}.html",
-        timeout=30000,
-        wait_until="domcontentloaded",
-    )
-    await asyncio.sleep(1.5)
     url = (
         "https://push2his.eastmoney.com/api/qt/stock/kline/get"
         f"?cb=__cyqScrape&secid={market}.{code}"
@@ -186,11 +181,16 @@ async def _fetch_kline_text(page: Any, code: str, fqt: str) -> str:
         f"&klt=101&fqt={fqt}&end={today}&lmt=210"
     )
     await page.goto(url, timeout=30000, wait_until="domcontentloaded")
-    await asyncio.sleep(1.0)
-    text = await page.evaluate("() => document.body ? document.body.innerText : ''")
-    if not text.lstrip().startswith("__cyqScrape("):
-        raise ValueError(f"日 K 接口响应异常: {text[:120]!r}")
-    return text
+    # 轮询 innerText 就绪（domcontentloaded 后文档文本可能仍为空），替代固定 sleep
+    deadline = asyncio.get_event_loop().time() + 10.0
+    while True:
+        text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+        if text.lstrip().startswith("__cyqScrape("):
+            return text
+        if asyncio.get_event_loop().time() >= deadline:
+            break
+        await asyncio.sleep(0.3)
+    raise ValueError(f"日 K 接口响应异常: {text[:120]!r}")
 
 
 def _cache_get(key: str) -> Optional[List[Dict[str, float]]]:
