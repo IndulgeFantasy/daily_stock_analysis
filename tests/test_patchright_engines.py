@@ -174,13 +174,13 @@ class TestBaiduParser(unittest.TestCase):
 </body></html>
 """
         results = parse_baidu(html, max_results=10)
-        # AI 总结作为第一条
+        # AI 总结作为第一条，日期为当天
         self.assertEqual(len(results), 2)
         first = results[0]
         self.assertEqual(first["source"], "baidu_ai_summary")
         self.assertEqual(first["title"], "[AI总结] 百度智能聚合分析")
         self.assertIn("牧原股份", first["snippet"])
-        self.assertIsNone(first["published_date"])
+        self.assertEqual(first["published_date"], datetime.now().strftime("%Y-%m-%d"))
         # 普通结果紧随其后
         self.assertEqual(results[1]["source"], "baidu.com")
 
@@ -254,13 +254,13 @@ class TestQuarkParser(unittest.TestCase):
         self.assertEqual(ai, [])
 
     def test_parse_extracts_real_ai_summary(self) -> None:
-        """AI 总结有真实内容（>100 字符且无模板标记）时提取。"""
+        """AI 总结有真实内容（>100 字符且无模板标记）时提取，日期为当天。"""
         results = parse_quark(QUARK_HTML_AI_REAL, max_results=10)
         ai = [r for r in results if r["source"] == "quark_ai_summary"]
         self.assertEqual(len(ai), 1)
         self.assertEqual(ai[0]["title"], "[AI总结] 夸克智能聚合分析")
         self.assertIn("伊利股份", ai[0]["snippet"])
-        self.assertIsNone(ai[0]["published_date"])
+        self.assertEqual(ai[0]["published_date"], datetime.now().strftime("%Y-%m-%d"))
 
 
 class Test360Parser(unittest.TestCase):

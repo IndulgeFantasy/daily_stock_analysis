@@ -121,17 +121,26 @@ class TestPatchrightServerContract(unittest.TestCase):
         deduped = patchright_server._dedupe_results(items, max_results=2)
         self.assertEqual(len(deduped), 2)
 
-    def test_dedupe_prefers_dated_results(self) -> None:
+    def test_dedupe_sorts_by_date_desc(self) -> None:
+        """三引擎结果按发布时间倒序聚合（最新在前，无日期垫底）。"""
         items = [
-            {"url": "https://a.com/1", "title": "no-date", "published_date": None},
-            {"url": "https://b.com/2", "title": "dated", "published_date": "2026-08-10"},
-            {"url": "https://c.com/3", "title": "dated2", "published_date": "2026-08-11"},
+            {"url": "https://a.com/1", "title": "old", "published_date": "2026-08-01"},
+            {"url": "https://b.com/2", "title": "no-date", "published_date": None},
+            {"url": "https://c.com/3", "title": "new", "published_date": "2026-08-10"},
+        ]
+        deduped = patchright_server._dedupe_results(items, max_results=3)
+        self.assertEqual([r["title"] for r in deduped], ["new", "old", "no-date"])
+
+    def test_dedupe_date_desc_respects_max_results(self) -> None:
+        """最新日期优先进入 top-N，旧闻与无日期被截断。"""
+        items = [
+            {"url": "https://a.com/1", "title": "newest", "published_date": "2026-08-11"},
+            {"url": "https://b.com/2", "title": "middle", "published_date": "2026-08-10"},
+            {"url": "https://c.com/3", "title": "oldest", "published_date": "2026-08-01"},
+            {"url": "https://d.com/4", "title": "no-date", "published_date": None},
         ]
         deduped = patchright_server._dedupe_results(items, max_results=2)
-        self.assertEqual(len(deduped), 2)
-        # 有日期的结果优先于无日期结果；同日期状态保持原始相对顺序（稳定排序）
-        self.assertEqual(deduped[0]["title"], "dated")
-        self.assertEqual(deduped[1]["title"], "dated2")
+        self.assertEqual([r["title"] for r in deduped], ["newest", "middle"])
 
     def test_dedupe_all_no_date_keeps_order(self) -> None:
         items = [

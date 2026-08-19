@@ -197,7 +197,7 @@ def _extract_baidu_ai_summary(soup) -> Optional[Dict]:
         "snippet": _clean_text(best_text, limit=1500),
         "url": "",
         "source": "baidu_ai_summary",
-        "published_date": None,
+        "published_date": datetime.now().strftime("%Y-%m-%d"),
     }
 
 
@@ -284,7 +284,7 @@ def _extract_quark_ai_summary(soup) -> Optional[Dict]:
         "snippet": _clean_text(text, limit=1500),
         "url": "",
         "source": "quark_ai_summary",
-        "published_date": None,
+        "published_date": datetime.now().strftime("%Y-%m-%d"),
     }
 
 

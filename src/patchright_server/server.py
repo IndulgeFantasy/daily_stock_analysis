@@ -116,11 +116,16 @@ def _search_response_to_dict(response: SearchResponse) -> Dict[str, Any]:
 
 
 def _dedupe_results(items: List[Dict[str, Any]], max_results: int) -> List[Dict[str, Any]]:
-    """去重并按发布时间优先排序（有日期的结果优先保留，避免被无日期结果挤掉）。"""
-    # 有 published_date 的排前面，保持引擎内相对顺序稳定
+    """去重并按发布时间倒序聚合（最新在前）。
+
+    - published_date 统一为 YYYY-MM-DD 字符串，字符串倒序即时间倒序
+    - 三引擎结果混合后按日期从新到旧，取前 max_results 条
+    - 无日期结果（空字符串）自然垫底
+    """
     ordered = sorted(
         items,
-        key=lambda item: 0 if (item.get("published_date") or "").strip() else 1,
+        key=lambda item: (item.get("published_date") or "").strip(),
+        reverse=True,
     )
     seen: set = set()
     deduped: List[Dict[str, Any]] = []
