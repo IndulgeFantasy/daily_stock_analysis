@@ -103,7 +103,7 @@ def build_market_review_runtime(
             searxng_public_instances_enabled=getattr(
                 config,
                 "searxng_public_instances_enabled",
-                True,
+                False,
             ),
             patchright_enabled=getattr(config, "patchright_enabled", False),
             patchright_base_url=getattr(

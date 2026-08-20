@@ -228,7 +228,7 @@ const fieldDescriptionMap: Record<string, string> = {
   BRAVE_API_KEYS: '用于新闻检索的 Brave Search 密钥，支持逗号分隔多个。',
   STOCK_INDEX_REMOTE_UPDATE_ENABLED: '控制是否从 GitHub main 远程刷新股票自动补全索引；失败会降级到本地缓存或内置索引，不影响主分析流程。',
   SEARXNG_BASE_URLS: 'SearXNG 自建实例地址（逗号分隔，无配额兜底，需在 settings.yml 启用 format: json）。',
-  SEARXNG_PUBLIC_INSTANCES_ENABLED: '当未配置 SearXNG 自建实例时，自动从 searx.space 获取公共实例并轮询使用；设为 false 可禁用该默认行为。',
+SEARXNG_PUBLIC_INSTANCES_ENABLED: '默认关闭；设为 true 后，当未配置 SearXNG 自建实例时，会从 searx.space 获取公共实例并轮询使用。',
   PATCHRIGHT_ENABLED: '启用 Patchright 独立搜索服务（本地浏览器引擎，抓取百度/夸克/360）。需要先通过 run-patchright-server.bat 启动服务。',
   PATCHRIGHT_BASE_URL: 'Patchright 独立搜索服务的基础地址，默认 http://127.0.0.1:8931；仅在开启 Patchright 搜索服务时使用。',
   MINIMAX_API_KEYS: '用于新闻检索的 MiniMax 密钥，支持逗号分隔多个（最低优先级）。',

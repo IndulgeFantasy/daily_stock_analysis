@@ -979,7 +979,7 @@ class Config:
     brave_api_keys: List[str] = field(default_factory=list)  # Brave Search API Keys
     serpapi_keys: List[str] = field(default_factory=list)  # SerpAPI Keys
     searxng_base_urls: List[str] = field(default_factory=list)  # SearXNG instance URLs (self-hosted, no quota)
-    searxng_public_instances_enabled: bool = True  # Auto-discover public SearXNG instances when base URLs are absent
+    searxng_public_instances_enabled: bool = False  # Opt in to public discovery when base URLs are absent
     patchright_enabled: bool = False  # Use the Patchright standalone search service (local browser)
     patchright_base_url: str = "http://127.0.0.1:8931"  # Patchright search service base URL
 
@@ -1016,6 +1016,13 @@ class Config:
     agent_decision_agent_timeout_s: float = 0
     agent_portfolio_agent_timeout_s: float = 0
     agent_skill_agent_timeout_s: float = 0
+    # Per-category default timeouts for agent tool calls (seconds).
+    # 0 / unset means "no category default" -> falls back to the global
+    # tool_call_timeout_seconds budget.
+    agent_data_tool_timeout_s: float = 0.0
+    agent_search_tool_timeout_s: float = 0.0
+    agent_analysis_tool_timeout_s: float = 0.0
+    agent_action_tool_timeout_s: float = 0.0
     agent_skill_concurrency: int = 3
     agent_risk_override: bool = True  # Allow risk agent to veto buy signals
     agent_deep_research_budget: int = 30000  # Max token budget for deep research
@@ -1709,7 +1716,7 @@ class Config:
             )
         searxng_public_instances_enabled = parse_env_bool(
             os.getenv('SEARXNG_PUBLIC_INSTANCES_ENABLED'),
-            default=True,
+            default=False,
         )
 
         patchright_enabled = parse_env_bool(
@@ -1955,6 +1962,22 @@ class Config:
             agent_skill_agent_timeout_s=parse_env_float(
                 os.getenv('AGENT_SKILL_AGENT_TIMEOUT_S'), 0,
                 field_name='AGENT_SKILL_AGENT_TIMEOUT_S', minimum=0,
+            ),
+            agent_data_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_DATA_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_DATA_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_search_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_SEARCH_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_SEARCH_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_analysis_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_ANALYSIS_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_ANALYSIS_TOOL_TIMEOUT_S', minimum=0.0,
+            ),
+            agent_action_tool_timeout_s=parse_env_float(
+                os.getenv('AGENT_ACTION_TOOL_TIMEOUT_S'), 0.0,
+                field_name='AGENT_ACTION_TOOL_TIMEOUT_S', minimum=0.0,
             ),
             agent_skill_concurrency=parse_env_int(
                 os.getenv('AGENT_SKILL_CONCURRENCY'),
@@ -3411,6 +3434,7 @@ class Config:
         # --- Notification channels ---
         has_notification = bool(
             self.wechat_webhook_url
+            or self.dingtalk_webhook_url
             or self.feishu_webhook_url
             or (
                 (self.feishu_app_id or "")
